@@ -1,7 +1,0 @@
-<resources>
-    <string name="app_name">Ayu_UI</string>
-    <string name="record">RECORD</string>
-    <string name="stop">STOP</string>
-    <string name="retake">RETAKE</string>
-    <string name="upload">UPLOAD</string>
-</resources>
