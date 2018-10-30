@@ -67,7 +67,7 @@ public class OtherVisualizer extends AppCompatActivity implements View.OnClickLi
     private boolean isRecording = false;
     private volatile double currentAmp;
     private double time = 0;
-    private String fileName;
+    private String filePath;
 
     @Override
     protected void onCreate(Bundle savedInstanceState){
@@ -191,9 +191,9 @@ public class OtherVisualizer extends AppCompatActivity implements View.OnClickLi
             file.mkdirs();
         }
 
-        this.fileName = Long.toString(System.currentTimeMillis());
+        this.filePath = file.getAbsolutePath() + "/" + System.currentTimeMillis() + AUDIO_RECORDER_FILE_EXT_WAV;
 
-        return file.getAbsolutePath() + "/" + this.fileName + AUDIO_RECORDER_FILE_EXT_WAV;
+        return this.filePath;
     }
 
     private void startRecording(){
