@@ -37,6 +37,11 @@
                 android:layout_height="wrap_content"
                 android:text="@string/upload"
                 android:id="@+id/upload"/>
+            <Button
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/play"
+                android:id="@+id/play"/>
         </LinearLayout>
     </FrameLayout>
 </android.support.constraint.ConstraintLayout>

@@ -4,4 +4,5 @@
     <string name="stop">STOP</string>
     <string name="retake">RETAKE</string>
     <string name="upload">UPLOAD</string>
+    <string name="play">PLAY</string>
 </resources>

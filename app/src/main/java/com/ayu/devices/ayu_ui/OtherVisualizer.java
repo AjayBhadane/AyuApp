@@ -3,8 +3,11 @@ package com.ayu.devices.ayu_ui;
 import android.Manifest;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
+import android.media.AudioAttributes;
 import android.media.AudioFormat;
+import android.media.AudioManager;
 import android.media.AudioRecord;
+import android.media.AudioTrack;
 import android.media.MediaRecorder;
 import android.os.Bundle;
 import android.os.Environment;
@@ -55,11 +58,16 @@ public class OtherVisualizer extends AppCompatActivity implements View.OnClickLi
 
     short[] audioData;
 
+//    Audio player
+    private AudioTrack track;
+
     private AudioRecord recorder = null;
     private int bufferSize = 0;
     private Thread recordingThread = null;
     private boolean isRecording = false;
     private volatile double currentAmp;
+    private double time = 0;
+    private String fileName;
 
     @Override
     protected void onCreate(Bundle savedInstanceState){
@@ -87,6 +95,23 @@ public class OtherVisualizer extends AppCompatActivity implements View.OnClickLi
             ActivityCompat.requestPermissions(this, new String[] {Manifest.permission.READ_EXTERNAL_STORAGE}, PERMISSION_READ_STORAGE);
         }
 
+        track = new AudioTrack(
+                new AudioAttributes.Builder()
+                .setContentType(AudioAttributes.CONTENT_TYPE_UNKNOWN)
+                .setUsage(AudioAttributes.USAGE_MEDIA)
+                .build(),
+
+                new AudioFormat.Builder()
+                .setChannelIndexMask(0x01)
+                .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
+                .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                .setSampleRate(RECORDER_SAMPLERATE)
+                .build(),
+
+                AudioTrack.getMinBufferSize(RECORDER_SAMPLERATE, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_16BIT) * 3,
+                AudioTrack.MODE_STREAM,
+                AudioManager.AUDIO_SESSION_ID_GENERATE
+        );
 
         this.currentAmp = 0;
         setContentView(R.layout.graph);
@@ -104,14 +129,14 @@ public class OtherVisualizer extends AppCompatActivity implements View.OnClickLi
     }
 
     private void startTimer(){
+        time = 0;
         timer = new Runnable() {
-            private double time = 0;
             @Override
             public void run() {
-                time += 1/SAMPLING_RATE;
+                time += 1;
                 long amp = (long)currentAmp;
                 series.appendData(new DataPoint(time,amp), true, MAX_DATA_POINTS);
-                handler.post(this);
+//                handler.post(this);
             }
         };
 
@@ -120,7 +145,7 @@ public class OtherVisualizer extends AppCompatActivity implements View.OnClickLi
 
         startRecording();
 
-        handler.post(timer);
+//        handler.post(timer);
     }
 
     private void stopTimer(){
@@ -134,12 +159,12 @@ public class OtherVisualizer extends AppCompatActivity implements View.OnClickLi
         graph.getViewport().setXAxisBoundsManual(true);
         graph.getViewport().setMinX(0);
 //        graph.getViewport().setMaxX((1/SAMPLING_RATE) * 1000);
-        graph.getViewport().setMaxX(0.1);
+        graph.getViewport().setMaxX(80);
         graph.getViewport().setYAxisBoundsManual(true);
         graph.getViewport().setMinY(-50000);
         graph.getViewport().setMaxY(50000);
 
-        graph.getViewport().setScrollable(true);
+        graph.getViewport().setScrollable(false);
 
         graph.addSeries(series);
     }
@@ -166,7 +191,9 @@ public class OtherVisualizer extends AppCompatActivity implements View.OnClickLi
             file.mkdirs();
         }
 
-        return file.getAbsolutePath() + "/" + System.currentTimeMillis() + AUDIO_RECORDER_FILE_EXT_WAV;
+        this.fileName = Long.toString(System.currentTimeMillis());
+
+        return file.getAbsolutePath() + "/" + this.fileName + AUDIO_RECORDER_FILE_EXT_WAV;
     }
 
     private void startRecording(){
@@ -303,32 +330,10 @@ public class OtherVisualizer extends AppCompatActivity implements View.OnClickLi
         if (os != null){
             while(isRecording){
                 read = recorder.read(data, 0, bufferSize);
+                track.write(data, 0, data.length);
                 short[] amps = new short[data.length/2];
                 ByteBuffer.wrap(data).order(ByteOrder.LITTLE_ENDIAN).asShortBuffer().get(amps);
-                int max = 0;
-
-                boolean neg = false;
-
-                for (int amp: amps){
-                    if(amp < 0){
-                        if(-amp > max){
-                            max = -amp;
-                            neg = true;
-                        }
-                    }else{
-                        if(amp > max){
-                            max = amp;
-                            neg = false;
-                        }
-                    }
-                }
-
-
-                if (neg){
-                    this.currentAmp = -max;
-                }else{
-                    this.currentAmp =  max;
-                }
+                addData(amps);
 
                 if(AudioRecord.ERROR_INVALID_OPERATION  != read){
                     try{
@@ -347,6 +352,35 @@ public class OtherVisualizer extends AppCompatActivity implements View.OnClickLi
         }
     }
 
+    private void addData(short[] amps){
+        int max = 0;
+
+        boolean neg = false;
+
+        for (int amp: amps){
+            if(amp < 0){
+                if(-amp > max){
+                    max = -amp;
+                    neg = true;
+                }
+            }else{
+                if(amp > max){
+                    max = amp;
+                    neg = false;
+                }
+            }
+        }
+
+        if (neg){
+            this.currentAmp = -max;
+        }else{
+            this.currentAmp =  max;
+        }
+
+        this.time += 1;
+        series.appendData(new DataPoint(time, this.currentAmp), true, MAX_DATA_POINTS);
+    }
+
     private String getTempFileName(){
         String filepath = Environment.getExternalStorageDirectory().getPath();
         File file = new File(filepath, AUDIO_RECORDER_FOLDER);
@@ -360,6 +394,7 @@ public class OtherVisualizer extends AppCompatActivity implements View.OnClickLi
         if(tempFile.exists()){
             tempFile.delete();
         }
+
         try{
             tempFile.createNewFile();
         }catch (IOException e){
@@ -370,13 +405,15 @@ public class OtherVisualizer extends AppCompatActivity implements View.OnClickLi
     }
 
     private void setButtonHandlers(){
-        Button stopButton, uploadButton, retakeButton;
+        Button stopButton, uploadButton, retakeButton, playButton;
 
         (retakeButton = findViewById(R.id.retake)).setOnClickListener(this);
         (stopButton = findViewById(R.id.stop)).setOnClickListener(this);
         (uploadButton = findViewById(R.id.upload)).setOnClickListener(this);
+        (playButton = findViewById(R.id.play)).setOnClickListener(this);
 
         uploadButton.setEnabled(false);
+        playButton.setEnabled(false);
     }
 
     private void stopRecording(){
@@ -414,6 +451,8 @@ public class OtherVisualizer extends AppCompatActivity implements View.OnClickLi
         initSeries();
         initGraph();
         startTimer();
+        track.stop();
+        track.flush();
     }
 
     private void upload(){
@@ -424,6 +463,8 @@ public class OtherVisualizer extends AppCompatActivity implements View.OnClickLi
     protected  void onPause(){
         super.onPause();
         stopRecording();
+        track.stop();
+        track.flush();
     }
 
     @Override
@@ -433,6 +474,7 @@ public class OtherVisualizer extends AppCompatActivity implements View.OnClickLi
             stopRecording();
 
             findViewById(R.id.upload).setEnabled(true);
+            findViewById(R.id.play).setEnabled(true);
 
         }else if(v.getId() == R.id.upload){
             upload();
@@ -441,8 +483,12 @@ public class OtherVisualizer extends AppCompatActivity implements View.OnClickLi
             if(! stop.isEnabled()){
                 stop.setEnabled(true);
             }
+
             findViewById(R.id.upload).setEnabled(false);
+            findViewById(R.id.play).setEnabled(false);
             retake();
+        }else if(v.getId() == R.id.play){
+            track.play();
         }
     }
 }
